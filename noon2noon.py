@@ -26,7 +26,7 @@ def main(path):
         next_day = str(int(noon[8:10]) + 1).zfill(2)
         noon_next_day = noon[:8] + next_day + ' 11:59:59'
         noon2noon = all_data.query("@first_time <= index <= @noon_next_day")
-         ts = noon2noon
+        ts = noon2noon
         ts = ts.reindex(ts.resample('120s').asfreq().index, method='nearest',
                         tolerance=pd.Timedelta('120s')).interpolate('time')
         all_data = all_data.iloc[len(ts):]
