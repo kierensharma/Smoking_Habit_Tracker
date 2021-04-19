@@ -130,16 +130,9 @@ class WindowGenerator():
 
 
 # Baseline model that just returns the current temperature as the prediction, predicting "No change"
-class Baseline(tf.keras.Model):
-  def __init__(self, label_index=None):
-    super().__init__()
-    self.label_index = label_index
-
+class MultiStepLastBaseline(tf.keras.Model):
   def call(self, inputs):
-    if self.label_index is None:
-      return inputs
-    result = inputs[:, :, self.label_index]
-    return result[:, :, tf.newaxis]
+    return tf.tile(inputs[:, -1:, :], [1, 24, 1])
 
 
 def compile_and_fit(model, window, patience=2):
@@ -206,70 +199,26 @@ def main():
     # _ = ax.set_xticklabels(df.keys(), rotation=90)
     # plt.show()
 
-    single_step_window = WindowGenerator(
-        input_width=1, label_width=1, shift=1, train_df=train_df, 
-        val_df=val_df, test_df=test_df, label_columns=['Heart rate'])
+    OUT_STEPS = 24
+    multi_window = WindowGenerator(input_width=24,
+                                label_width=OUT_STEPS,
+                                shift=OUT_STEPS,
+                                train_df=train_df,
+                                val_df=val_df,
+                                test_df=test_df)
 
-    baseline = Baseline(label_index=column_indices['Heart rate'])
-    baseline.compile(loss=tf.losses.MeanSquaredError(),
-                 metrics=[tf.metrics.MeanAbsoluteError()])
+    multi_window.plot()
 
-    val_performance = {}
-    performance = {}
-    val_performance['Baseline'] = baseline.evaluate(single_step_window.val)
-    performance['Baseline'] = baseline.evaluate(single_step_window.test, verbose=0)
+    last_baseline = MultiStepLastBaseline()
+    last_baseline.compile(loss=tf.losses.MeanSquaredError(),
+                        metrics=[tf.metrics.MeanAbsoluteError()])
+    
+    multi_val_performance = {}
+    multi_performance = {}
 
-    wide_window = WindowGenerator(
-    input_width=25, label_width=25, shift=1, train_df=train_df, 
-    val_df=val_df, test_df=test_df, label_columns=['Heart rate'])
-
-    wide_window.plot(baseline)
-
-    # CONV_WIDTH = 4
-    # conv_window = WindowGenerator(
-    #     input_width=CONV_WIDTH,
-    #     label_width=1,
-    #     shift=1,
-    #     train_df=train_df,
-    #     val_df=val_df,
-    #     test_df=test_df,
-    #     label_columns=['Heart rate'])
-
-    # LABEL_WIDTH = 25
-    # INPUT_WIDTH = LABEL_WIDTH + (CONV_WIDTH - 1)
-    # wide_conv_window = WindowGenerator(
-    #     input_width=INPUT_WIDTH,
-    #     label_width=LABEL_WIDTH,
-    #     shift=1,
-    #     train_df=train_df,
-    #     val_df=val_df,
-    #     test_df=test_df,
-    #     label_columns=['Heart rate'])
-
-    # conv_model = tf.keras.Sequential([
-    #     tf.keras.layers.Conv1D(filters=32,
-    #                         kernel_size=(CONV_WIDTH,),
-    #                         activation='relu'),
-    #     tf.keras.layers.Dense(units=32, activation='relu'),
-    #     tf.keras.layers.Dense(units=1),
-    # ])
-
-    # history = compile_and_fit(conv_model, conv_window)
-    # val_performance['Conv'] = conv_model.evaluate(conv_window.val)
-    # performance['Conv'] = conv_model.evaluate(conv_window.test, verbose=0)
-    # # wide_conv_window.plot(conv_model)
-
-    # lstm_model = tf.keras.models.Sequential([
-    #     # Shape [batch, time, features] => [batch, time, lstm_units]
-    #     tf.keras.layers.LSTM(32, return_sequences=True),
-    #     # Shape => [batch, time, features]
-    #     tf.keras.layers.Dense(units=1)
-    # ])
-
-    # history = compile_and_fit(lstm_model, wide_window)
-    # val_performance['LSTM'] = lstm_model.evaluate(wide_window.val)
-    # performance['LSTM'] = lstm_model.evaluate(wide_window.test, verbose=0)
-    # wide_window.plot(lstm_model)
+    multi_val_performance['Last'] = last_baseline.evaluate(multi_window.val)
+    multi_performance['Last'] = last_baseline.evaluate(multi_window.test, verbose=0)
+    multi_window.plot(last_baseline)
 
 if __name__ == '__main__':
     main()
