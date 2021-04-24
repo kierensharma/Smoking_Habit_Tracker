@@ -15,8 +15,8 @@ def main(label_path):
             hr_data = pd.read_csv(day)
             hr_data['sleep time'] = int(0)
             for x in label_data['Sleep time']:
-                print(pd.to_datetime(x).date)
-                # == hr_data['Timestamp']
+                if pd.to_datetime(x).day == day
+                
 
             # if hr_data['Timestamp'].Date == label_data['Sleep time'].Date:
             #     print(true)

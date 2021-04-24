@@ -21,8 +21,8 @@ def main(path):
     all_data = all_data.iloc[len(first_12h):] #this is cool
     all_data['sleep time'] = int(0)
     
-    all_data = all_data.reindex(all_data.resample('120s').asfreq().index, method='nearest',
-                        tolerance=pd.Timedelta('120s')).interpolate('time')
+    all_data = all_data.reindex(all_data.resample('300s').asfreq().index, method='nearest',
+                        tolerance=pd.Timedelta('300s')).interpolate('time')
     #appending sleep label
     label_data = pd.read_csv('sleep_labels/feb_sleep_labels.csv')
     label_data['Sleep time'] = label_data['Day'].str.cat(label_data['Sleep time'],sep=" ")
@@ -41,7 +41,7 @@ def main(path):
         noon_next_day = noon[:8] + next_day + ' 11:59:59'
         noon2noon = all_data.query("@first_time <= index <= @noon_next_day")
         all_data = all_data.iloc[len(noon2noon):]
-        noon2noon.to_csv('/Users/emiliolanzalaco/Smoking_Habit_Tracker/noon2noon/labelled_interpolated/' + noon[:10] + '.csv')
+        noon2noon.to_csv('/Users/emiliolanzalaco/Smoking_Habit_Tracker/noon2noon/labelled_interpolated_5min/' + noon[:10] + '.csv')
 
 main('/Users/emiliolanzalaco/Documents/Smoking_Habit_Tracker/HR_CSV_Data/')
 
