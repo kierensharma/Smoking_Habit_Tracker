@@ -1,14 +1,16 @@
+import os
 import pandas as pd
 import datetime
 import numpy as np
 from matplotlib import pyplot as plt
 import seaborn as sns
 import tensorflow as tf
+from tqdm import tqdm
 
 class WindowGenerator():
     def __init__(self, input_width, label_width, shift,
-               train_df, val_df, test_df,
-               label_columns=None):
+                train_df, val_df, test_df,
+                label_columns=None):
         # Store the raw data.
         self.train_df = train_df
         self.val_df = val_df
@@ -17,10 +19,10 @@ class WindowGenerator():
         # Work out the label column indices.
         self.label_columns = label_columns
         if label_columns is not None:
-            self.label_columns_indices = {name: i for i, name in 
-                                          enumerate(label_columns)}
-        self.column_indices = {name: i for i, name in 
-                               enumerate(train_df.columns)}
+            self.label_columns_indices = {name: i for i, name in
+                                            enumerate(label_columns)}
+        self.column_indices = {name: i for i, name in
+                            enumerate(train_df.columns)}
 
         # Work out the window parameters.
         self.input_width = input_width
@@ -35,7 +37,14 @@ class WindowGenerator():
         self.label_start = self.total_window_size - self.label_width
         self.labels_slice = slice(self.label_start, None)
         self.label_indices = np.arange(self.total_window_size)[self.labels_slice]
-    
+
+    def __repr__(self):
+        return '\n'.join([
+            f'Total window size: {self.total_window_size}',
+            f'Input indices: {self.input_indices}',
+            f'Label indices: {self.label_indices}',
+            f'Label column name(s): {self.label_columns}'])
+
     def split_window(self, features):
         inputs = features[:, self.input_slice, :]
         labels = features[:, self.labels_slice, :]
@@ -50,7 +59,7 @@ class WindowGenerator():
         labels.set_shape([None, self.label_width, None])
 
         return inputs, labels
-    
+
     def plot(self, model=None, plot_col='Heart rate', max_subplots=3):
         inputs, labels = self.example
         plt.figure(figsize=(12, 8))
@@ -63,7 +72,7 @@ class WindowGenerator():
                     label='Inputs', marker='.', zorder=-10)
 
             if self.label_columns:
-                label_col_index = self.label_columns_indices.get(plot_col, None)
+             label_col_index = self.label_columns_indices.get(plot_col, None)
             else:
                 label_col_index = plot_col_index
 
@@ -81,9 +90,9 @@ class WindowGenerator():
             if n == 0:
                 plt.legend()
 
-        plt.xlabel('Number of timesteps')
+        plt.xlabel('Time [min]')
         plt.show()
-    
+
     def make_dataset(self, data):
         data = np.array(data, dtype=np.float32)
         ds = tf.keras.preprocessing.timeseries_dataset_from_array(
@@ -104,11 +113,11 @@ class WindowGenerator():
 
     @property
     def val(self):
-     return self.make_dataset(self.val_df)
+        return self.make_dataset(self.val_df)
 
     @property
     def test(self):
-     return self.make_dataset(self.test_df)
+        return self.make_dataset(self.test_df)
 
     @property
     def example(self):
@@ -121,22 +130,94 @@ class WindowGenerator():
             self._example = result
         return result
 
-    def __repr__(self):
-        return '\n'.join([
-            f'Total window size: {self.total_window_size}',
-            f'Input indices: {self.input_indices}',
-            f'Label indices: {self.label_indices}',
-            f'Label column name(s): {self.label_columns}'])
-
-
-# Baseline model that just returns the current temperature as the prediction, predicting "No change"
-class MultiStepLastBaseline(tf.keras.Model):
+class RepeatBaseline(tf.keras.Model):
   def call(self, inputs):
-    return tf.tile(inputs[:, -1:, :], [1, 24, 1])
+    return inputs
 
+def main():
+    df = merge_data('noon2noon/interpolated')
+    date_time = pd.to_datetime(df.pop('Timestamp'), format='%Y-%m-%d %H:%M:%S')
+    timestamp_s = date_time.map(datetime.datetime.timestamp)
+
+    # Creation of 'time of day signal' due to periodicity of data
+    day = 24*60*60
+    year = (365.2425)*day
+
+    df['Day sin'] = np.sin(timestamp_s * (2 * np.pi / day))
+    df['Day cos'] = np.cos(timestamp_s * (2 * np.pi / day)) 
+
+    # plt.plot(np.array(df['Day sin'])[:721])
+    # plt.plot(np.array(df['Day cos'])[:721])
+    # plt.xlabel('Time [min]')
+    # plt.title('Time of day signal')
+    # plt.show()
+
+    # Splitting of full dataframe into training, validation and testing sets
+    column_indices = {name: i for i, name in enumerate(df.columns)}
+
+    n = len(df)
+    train_df = df[0:int(n*0.7)]
+    val_df = df[int(n*0.7):int(n*0.9)]
+    test_df = df[int(n*0.9):]
+
+    num_features = df.shape[1]
+
+    # Normilisation of data to scale features
+    train_mean = train_df.mean()
+    train_std = train_df.std()
+
+    train_df = (train_df - train_mean) / train_std
+    val_df = (val_df - train_mean) / train_std
+    test_df = (test_df - train_mean) / train_std
+
+    OUT_STEPS = 720
+    multi_window = WindowGenerator(input_width=720,
+                                label_width=OUT_STEPS,
+                                shift=OUT_STEPS,
+                                train_df=train_df,
+                                val_df=val_df,
+                                test_df=test_df)
+
+    repeat_baseline = RepeatBaseline()
+    repeat_baseline.compile(loss=tf.losses.MeanSquaredError(),
+                            metrics=[tf.metrics.MeanAbsoluteError()])
+
+    multi_val_performance = {}
+    multi_performance = {}
+
+    multi_val_performance['Repeat'] = repeat_baseline.evaluate(multi_window.val)
+    multi_performance['Repeat'] = repeat_baseline.evaluate(multi_window.test, verbose=0)
+    # multi_window.plot(repeat_baseline)
+
+    multi_lstm_model = tf.keras.Sequential([
+        # Shape [batch, time, features] => [batch, lstm_units]
+        # Adding more `lstm_units` just overfits more quickly.
+        tf.keras.layers.LSTM(32, return_sequences=False),
+        # Shape => [batch, out_steps*features]
+        tf.keras.layers.Dense(OUT_STEPS*num_features,
+                            kernel_initializer=tf.initializers.zeros()),
+        # Shape => [batch, out_steps, features]
+        tf.keras.layers.Reshape([OUT_STEPS, num_features])
+    ])
+
+    history = compile_and_fit(multi_lstm_model, multi_window)
+
+    multi_val_performance['LSTM'] = multi_lstm_model.evaluate(multi_window.val)
+    multi_performance['LSTM'] = multi_lstm_model.evaluate(multi_window.test, verbose=0)
+    multi_window.plot(multi_lstm_model)
+
+def merge_data(directory):
+    df = pd.DataFrame(columns=('Timestamp','Heart rate'))
+    direct = os.listdir(directory)
+    direct.sort()
+    for filename in tqdm(direct):
+        if filename.endswith(".csv"):
+            temp_df = pd.read_csv('noon2noon/interpolated/{}'.format(filename))
+            df = df.append(temp_df)
+    return df
 
 def compile_and_fit(model, window, patience=2):
-    MAX_EPOCHS = 50
+    MAX_EPOCHS = 20
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
                                                     patience=patience,
                                                     mode='min')
@@ -149,76 +230,6 @@ def compile_and_fit(model, window, patience=2):
                         validation_data=window.val,
                         callbacks=[early_stopping])
     return history
-
-
-def main():
-    df = pd.read_csv('forecasting_example_data.csv')
-
-    NUM_TIMESTEPS = df.shape[0]
-
-    # timestamps = hr_df['Timestamp'].to_list()
-    # date_time = pd.to_datetime(df.pop('Timestamp'), format='%Y.%m.%d %H:%M:%S')
-    date_time = pd.to_datetime(df.pop('Timestamp'), format='%d/%m/%Y %H:%M')
-    timestamp_s = date_time.map(datetime.datetime.timestamp)
-
-    day = 24*60*60
-
-    df['Day sin'] = np.sin(timestamp_s * (2 * np.pi / day))
-    df['Day cos'] = np.cos(timestamp_s * (2 * np.pi / day))
-
-    # plt.plot(np.array(df['Day sin']))
-    # plt.plot(np.array(df['Day cos']))
-    # plt.xlabel('Time [h]')
-    # plt.title('Time of day signal')
-    # plt.show()
-
-    column_indices = {name: i for i, name in enumerate(df.columns)}
-
-    n = len(df)
-    # train_df = df[0:int(n*0.7)]
-    # val_df = df[int(n*0.7):int(n*0.9)]
-    # test_df = df[int(n*0.9):]
-
-    train_df = df[int(n*0.3):]
-    val_df = df[int(n*0.1):int(n*0.3)]
-    test_df = df[0:int(n*0.1)]
-
-    num_features = df.shape[1]
-
-    train_mean = train_df.mean()
-    train_std = train_df.std()
-
-    # train_df = (train_df - train_mean) / train_std
-    # val_df = (val_df - train_mean) / train_std
-    # test_df = (test_df - train_mean) / train_std
-
-    df_std = (df - train_mean) / train_std
-    df_std = df_std.melt(var_name='Column', value_name='Normalized')
-    # plt.figure(figsize=(12, 6))
-    # ax = sns.violinplot(x='Column', y='Normalized', data=df_std)
-    # _ = ax.set_xticklabels(df.keys(), rotation=90)
-    # plt.show()
-
-    OUT_STEPS = 24
-    multi_window = WindowGenerator(input_width=24,
-                                label_width=OUT_STEPS,
-                                shift=OUT_STEPS,
-                                train_df=train_df,
-                                val_df=val_df,
-                                test_df=test_df)
-
-    multi_window.plot()
-
-    last_baseline = MultiStepLastBaseline()
-    last_baseline.compile(loss=tf.losses.MeanSquaredError(),
-                        metrics=[tf.metrics.MeanAbsoluteError()])
-    
-    multi_val_performance = {}
-    multi_performance = {}
-
-    multi_val_performance['Last'] = last_baseline.evaluate(multi_window.val)
-    multi_performance['Last'] = last_baseline.evaluate(multi_window.test, verbose=0)
-    multi_window.plot(last_baseline)
 
 if __name__ == '__main__':
     main()
