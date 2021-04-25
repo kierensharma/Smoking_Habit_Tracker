@@ -135,7 +135,7 @@ class RepeatBaseline(tf.keras.Model):
     return inputs
 
 def main():
-    df = merge_data('noon2noon/interpolated')
+    df = merge_data('noon2noon/labelled_interpolated_2min')
     date_time = pd.to_datetime(df.pop('Timestamp'), format='%Y-%m-%d %H:%M:%S')
     timestamp_s = date_time.map(datetime.datetime.timestamp)
 
@@ -170,8 +170,8 @@ def main():
     val_df = (val_df - train_mean) / train_std
     test_df = (test_df - train_mean) / train_std
 
-    OUT_STEPS = 720
-    multi_window = WindowGenerator(input_width=720,
+    OUT_STEPS = 288
+    multi_window = WindowGenerator(input_width=288,
                                 label_width=OUT_STEPS,
                                 shift=OUT_STEPS,
                                 train_df=train_df,
@@ -212,7 +212,7 @@ def merge_data(directory):
     direct.sort()
     for filename in tqdm(direct):
         if filename.endswith(".csv"):
-            temp_df = pd.read_csv('noon2noon/interpolated/{}'.format(filename))
+            temp_df = pd.read_csv('noon2noon/labelled_interpolated_2min/{}'.format(filename))
             df = df.append(temp_df)
     return df
 
