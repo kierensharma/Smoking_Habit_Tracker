@@ -170,8 +170,8 @@ def main():
     val_df = (val_df - train_mean) / train_std
     test_df = (test_df - train_mean) / train_std
 
-    OUT_STEPS = 288
-    multi_window = WindowGenerator(input_width=288,
+    OUT_STEPS = 720
+    multi_window = WindowGenerator(input_width=720,
                                 label_width=OUT_STEPS,
                                 shift=OUT_STEPS,
                                 train_df=train_df,
