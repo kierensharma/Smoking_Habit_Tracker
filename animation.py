@@ -5,39 +5,77 @@ from matplotlib.animation import FuncAnimation
 import numpy as np
 
 
-# def moving_plot(path):
+pvals = pd.read_csv('pvals03.csv')
+pvals = pvals.T
+pvals = pvals.reset_index()
+pvals = pvals.rename(columns = {'index':'pvals'})
+
+pvals = list(pvals['pvals'].astype(float))
+print(pvals)
+data = pd.read_csv('noon2noon/labelled_interpolated_2min/2021-02-03.csv')
+time = list(data['Timestamp'])
+hr = list(data['Heart rate'])   
+    
+# label = data.loc[data['sleep time']==int(1)]
 
 
+# pvals.loc[pvals.index == 1].pvals.item()
 index1 = count()
 index2 = count()
-
-def animate(i):
-    data = pd.read_csv('noon2noon/labelled_interpolated/2021-02-01.csv')
+index3 = count()
+index4 = count()
+fig, (ax1, ax2) = plt.subplots(2)
+ax1.set_xlim([pd.to_datetime(time[0]), pd.to_datetime(time[-1])])
+ax2.set_xlim([pd.to_datetime(time[0]), pd.to_datetime(time[-1])])
+ax1.set_xlabel('Time')
+ax2.set_xlabel('Time')
+ax1.set_ylabel('Heart Rate')
+ax2.set_ylabel('p-value')
+plt.style.use('dark_background')
+def animate_hr(i):
+    data = pd.read_csv('noon2noon/labelled_interpolated_2min/2021-02-03.csv')
     time = list(data['Timestamp'])
     hr = list(data['Heart rate'])   
+    pvals = pd.read_csv('pvals03.csv')
+    pvals = pvals.T
+    pvals = pvals.reset_index()
+    pvals = pvals.rename(columns = {'index':'pvals'})
+    pvals = list(pvals['pvals'].astype(float))
+
+   
     # label = data.loc[data['sleep time']==int(1)]
     x = pd.to_datetime(time[:next(index1)])
+    x2 = pd.to_datetime(time[:next(index3)])
     y = hr[:next(index2)]
-    plt.plot_date(x, y, 'r-', lw=1, xdate=True)
-    plt.axes(xlim= (pd.to_datetime(time[0]), pd.to_datetime(time[-1])))
+    p = pvals[:next(index4)]
+    
+    
+    ax1.set_ylim([min(hr)-5, max(hr)+5])
+    ax1.plot_date(x, y, 'r-', lw=1, xdate=True)
+    #pvals
+    
+    ax2.set_ylim([0,1])
+    ax2.plot_date(x2, p, 'y-', lw=1, xdate=True)
     plt.tight_layout()
-    ax = plt.gca()
-    ax.set_facecolor('black')
-
-data = pd.read_csv('noon2noon/labelled_interpolated/2021-02-01.csv')
-time = list(data['Timestamp'])
-ani = FuncAnimation(plt.gcf(), animate, interval=100)
-fig,ax = plt.subplots()
-fig.autofmt_xdate()
+    ax1.set_facecolor('black')
+    ax2.set_facecolor('black')
+    #plt.style.use('dark_background')
+# def animate_pval(i)
 
 
-#ax.set_xlim([pd.to_datetime(time[0]), pd.to_datetime(time[-1])])
+# data = pd.read_csv('noon2noon/labelled_interpolated_2min/2021-02-01.csv')
+# time = list(data['Timestamp'])
+ani = FuncAnimation(plt.gcf(), animate_hr, interval=100)
 plt.show()
 
+ax.set_xlim([pd.to_datetime(time[0]), pd.to_datetime(time[-1])])
 
-left = pd.to_datetime(time[0])
-right = pd.to_datetime(time[-1])
-plt.gca().set_xbound(left, right)
+
+    
+
+# left = pd.to_datetime(time[0])
+# right = pd.to_datetime(time[-1])
+# plt.gca().set_xbound(left, right)
 
 
 
