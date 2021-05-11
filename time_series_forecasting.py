@@ -60,7 +60,7 @@ class WindowGenerator():
 
         return inputs, labels
 
-    def plot(self, model=None, plot_col='Heart rate', max_subplots=1):
+    def plot(self, model=None, plot_col='Heart rate', max_subplots=3):
         inputs, labels = self.example
         plt.figure(figsize=(12, 8))
         plot_col_index = self.column_indices[plot_col]
@@ -131,6 +131,10 @@ class WindowGenerator():
             self._example = result
         return result
 
+class MultiStepLastBaseline(tf.keras.Model):
+  def call(self, inputs):
+    return tf.tile(inputs[:, -1:, :], [1, 720, 1])
+
 class RepeatBaseline(tf.keras.Model):
   def call(self, inputs):
     return inputs
@@ -179,6 +183,16 @@ def main():
                                 val_df=val_df,
                                 test_df=test_df)
 
+    last_baseline = MultiStepLastBaseline()
+    last_baseline.compile(loss=tf.losses.MeanSquaredError(),
+                        metrics=[tf.metrics.MeanAbsoluteError()])
+
+    multi_val_performance = {}
+    multi_performance = {}
+
+    multi_val_performance['Last'] = last_baseline.evaluate(multi_window.val)
+    multi_performance['Last'] = last_baseline.evaluate(multi_window.test, verbose=0)
+
     repeat_baseline = RepeatBaseline()
     repeat_baseline.compile(loss=tf.losses.MeanSquaredError(),
                             metrics=[tf.metrics.MeanAbsoluteError()])
@@ -188,7 +202,6 @@ def main():
 
     multi_val_performance['Repeat'] = repeat_baseline.evaluate(multi_window.val)
     multi_performance['Repeat'] = repeat_baseline.evaluate(multi_window.test, verbose=0)
-    # multi_window.plot(repeat_baseline)
 
     multi_lstm_model = tf.keras.Sequential([
         # Shape [batch, time, features] => [batch, lstm_units]
@@ -207,6 +220,23 @@ def main():
     multi_val_performance['LSTM'] = multi_lstm_model.evaluate(multi_window.val)
     multi_performance['LSTM'] = multi_lstm_model.evaluate(multi_window.test, verbose=0)
     multi_window.plot(multi_lstm_model)
+
+    x = np.arange(len(multi_performance))
+    width = 0.3
+
+
+    metric_name = 'mean_absolute_error'
+    metric_index = multi_lstm_model.metrics_names.index('mean_absolute_error')
+    val_mae = [v[metric_index] for v in multi_val_performance.values()]
+    test_mae = [v[metric_index] for v in multi_performance.values()]
+
+    plt.bar(x - 0.17, val_mae, width, label='Validation')
+    plt.bar(x + 0.17, test_mae, width, label='Test')
+    plt.xticks(ticks=x, labels=multi_performance.keys(),
+            rotation=45)
+    plt.ylabel(f'MAE (average over all times and outputs)')
+    _ = plt.legend()
+    plt.show()
 
 def merge_data(directory):
     df = pd.DataFrame(columns=('Timestamp','Heart rate'))
@@ -243,9 +273,9 @@ def plot_training(history):
     plt.ylabel('loss')
 
     plt.subplot(1,2,2)
-    plt.plot(history.history['accuracy'])
+    plt.plot(history.history['mean_absolute_error'])
     plt.xlabel('epochs')
-    plt.ylabel('accuracy')
+    plt.ylabel('mean absolute error')
 
     plt.show()
 
