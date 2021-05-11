@@ -60,7 +60,7 @@ class WindowGenerator():
 
         return inputs, labels
 
-    def plot(self, model=None, plot_col='Heart rate', max_subplots=3):
+    def plot(self, model=None, plot_col='Heart rate', max_subplots=1):
         inputs, labels = self.example
         plt.figure(figsize=(12, 8))
         plot_col_index = self.column_indices[plot_col]
@@ -80,16 +80,17 @@ class WindowGenerator():
                 continue
 
             plt.scatter(self.label_indices, labels[n, :, label_col_index],
-                        edgecolors='k', label='Labels', c='#2ca02c', s=64)
+                        edgecolors='k', label='Labels', c='#2ca02c', s=40)
             if model is not None:
                 predictions = model(inputs)
                 plt.scatter(self.label_indices, predictions[n, :, label_col_index],
                             marker='X', edgecolors='k', label='Predictions',
-                            c='#ff7f0e', s=64)
+                            c='#ff7f0e', s=40)
 
             if n == 0:
                 plt.legend()
 
+        plt.title('LSTM multi-step timeseries forecasting of heart rate data')
         plt.xlabel('Time [min]')
         plt.show()
 
@@ -201,6 +202,7 @@ def main():
     ])
 
     history = compile_and_fit(multi_lstm_model, multi_window)
+    plot_training(history)
 
     multi_val_performance['LSTM'] = multi_lstm_model.evaluate(multi_window.val)
     multi_performance['LSTM'] = multi_lstm_model.evaluate(multi_window.test, verbose=0)
@@ -230,6 +232,22 @@ def compile_and_fit(model, window, patience=2):
                         validation_data=window.val,
                         callbacks=[early_stopping])
     return history
+
+def plot_training(history):
+    fig = plt.figure()
+    fig.suptitle('Convergence plots showing training of neural network')
+
+    plt.subplot(1,2,1)
+    plt.plot(history.history['loss'])
+    plt.xlabel('epochs')
+    plt.ylabel('loss')
+
+    plt.subplot(1,2,2)
+    plt.plot(history.history['accuracy'])
+    plt.xlabel('epochs')
+    plt.ylabel('accuracy')
+
+    plt.show()
 
 if __name__ == '__main__':
     main()
